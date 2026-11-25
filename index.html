@@ -44,14 +44,54 @@ function renderAll(){renderHoldings();renderSummary()}
 $('add').onclick=()=>{const ticker=$('ticker').value.trim().toUpperCase(),kind=$('kind').value,qty=+$('quantity').value,spot=+$('spot').value,basis=+$('basis').value,strike=+$('strike').value,premium=+$('premium').value,vol=+$('vol').value;if(!/^[A-Z0-9.\-]{1,12}$/.test(ticker)||!Number.isFinite(qty)||qty<=0||!Number.isFinite(spot)||spot<=0||!Number.isFinite(vol)||vol<=0||vol>200){alert('Enter a valid ticker, positive quantity and share price, and volatility between 1% and 200%.');return}if(['shares','shortShares','covered'].includes(kind)&&(!Number.isFinite(basis)||basis<=0)){alert('Enter a valid share cost basis.');return}if(optionKinds.includes(kind)&&(!Number.isFinite(strike)||strike<=0||!Number.isFinite(premium)||premium<0)){alert('Enter a valid strike and non-negative premium.');return}addPosition({ticker,kind,qty,spot,basis,strike,premium,vol});};
 function normal(){let u=Math.max(Math.random(),1e-12),v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
 function payoff(p,end){if(p.kind==='shares')return (end-p.basis)*p.qty;if(p.kind==='shortShares')return (p.basis-end)*p.qty;if(p.kind==='put')return (p.premium-Math.max(p.strike-end,0))*p.qty*100;if(p.kind==='call')return (p.premium-Math.max(end-p.strike,0))*p.qty*100;if(p.kind==='covered')return (end-p.basis)*p.qty*100+(p.premium-Math.max(end-p.strike,0))*p.qty*100;return 0}
-function drawPaths(paths,days){const host=$('chart');host.innerHTML='<canvas id="pathsCanvas" aria-label="Chart showing every simulated portfolio profit and loss path over time"></canvas>';const canvas=$('pathsCanvas'),rect=host.getBoundingClientRect(),w=Math.max(320,Math.floor(rect.width)),h=Math.max(150,Math.floor(rect.height)),dpr=window.devicePixelRatio||1;canvas.width=w*dpr;canvas.height=h*dpr;const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);const pad={l:54,r:8,t:9,b:18},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;let min=Infinity,max=-Infinity;for(const path of paths)for(const v of path){if(v<min)min=v;if(v>max)max=v}min=Math.min(min,0);max=Math.max(max,0);if(max-min<1){max+=1;min-=1}const y=v=>pad.t+(max-v)/(max-min)*ph,x=i=>pad.l+i/(paths[0].length-1)*pw;ctx.font='10px system-ui';ctx.fillStyle='#687970';ctx.strokeStyle='#e2e8e1';ctx.lineWidth=1;[0,.25,.5,.75,1].forEach(t=>{const yy=pad.t+t*ph;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();const val=max-t*(max-min);ctx.fillText((val<0?'−':'')+'
-$('run').onclick=runSimulation;$('horizon').onchange=()=>{lastResults=null;renderSummary()};$('paths').onchange=()=>{lastResults=null;renderSummary()};
-$('demo').onclick=()=>{positions=[];addPosition({ticker:'SPY',kind:'shares',qty:100,spot:590,basis:575,strike:580,premium:4.25,vol:18});addPosition({ticker:'QQQ',kind:'put',qty:1,spot:505,basis:505,strike:490,premium:5.2,vol:23});addPosition({ticker:'AAPL',kind:'covered',qty:1,spot:230,basis:215,strike:245,premium:3.1,vol:27});runSimulation()};
-$('clear').onclick=()=>{positions=[];lastResults=null;$('median').textContent=$('low').textContent=$('high').textContent='—';$('chart').innerHTML='<div class="empty" style="width:100%">Add positions, then run the simulation.</div>';$('simStatus').textContent='No simulation run yet.';renderAll()};
-renderAll();
-</script></body></html>+Math.abs(val/1000).toFixed(0)+'k',2,yy+3)});ctx.strokeStyle='#829b8b';ctx.lineWidth=Math.max(.45,Math.min(1,1800/paths.length));ctx.globalAlpha=Math.max(.035,Math.min(.16,3/Math.sqrt(paths.length)));for(const path of paths){ctx.beginPath();path.forEach((v,i)=>i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v)));ctx.stroke()}ctx.globalAlpha=1;ctx.strokeStyle='#205b46';ctx.lineWidth=1.6;const med=Array(paths[0].length);for(let j=0;j<med.length;j++){const vals=paths.map(p=>p[j]).sort((a,b)=>a-b);med[j]=vals[Math.floor(vals.length/2)]}ctx.beginPath();med.forEach((v,i)=>i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v)));ctx.stroke();ctx.fillStyle='#205b46';ctx.fillText('Median',w-53,12);$('chartHorizon').textContent=days+' days'}
-function runSimulation(){if(!positions.length){$('simStatus').textContent='Add at least one investment before running the simulation.';return}const days=+$('horizon').value,n=+$('paths').value,steps=60,dt=days/365/steps,paths=new Array(n),results=new Array(n);for(let i=0;i<n;i++){const values=Array(steps+1).fill(0),prices=positions.map(p=>p.spot);for(let step=1;step<=steps;step++){let total=0;for(let k=0;k<positions.length;k++){const p=positions[k],vol=p.vol/100,z=.55*normal()+Math.sqrt(1-.55*.55)*normal();prices[k]*=Math.exp((-.5*vol*vol)*dt+vol*Math.sqrt(dt)*z);total+=payoff(p,prices[k])}values[step]=total}paths[i]=values;results[i]=values[steps]}const sorted=results.slice().sort((a,b)=>a-b),quant=q=>sorted[Math.min(n-1,Math.floor(q*(n-1)))];$('median').textContent=money(quant(.5));$('low').textContent=money(quant(.05));$('high').textContent=money(quant(.95));drawPaths(paths,days);$('simStatus').textContent=n.toLocaleString()+' simulated portfolio paths · each line is one possible outcome over '+days+' days. Dark line is the median. Simplified model; not a forecast.';lastResults=true;renderSummary()}
-$('run').onclick=runSimulation;$('horizon').onchange=()=>{lastResults=null;renderSummary()};$('paths').onchange=()=>{lastResults=null;renderSummary()};
+
+function drawPaths(paths,days){
+ const host=$('chart');
+ host.innerHTML='<canvas id="pathsCanvas" aria-label="Chart showing every simulated portfolio profit and loss path over time"></canvas>';
+ const canvas=$('pathsCanvas'),rect=host.getBoundingClientRect(),w=Math.max(320,Math.floor(rect.width)),h=Math.max(150,Math.floor(rect.height)),dpr=window.devicePixelRatio||1;
+ canvas.width=w*dpr;canvas.height=h*dpr;
+ const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);
+ const pad={l:54,r:8,t:9,b:18},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+ let min=Infinity,max=-Infinity;
+ for(const path of paths)for(const v of path){min=Math.min(min,v);max=Math.max(max,v)}
+ min=Math.min(min,0);max=Math.max(max,0);if(max-min<1){max+=1;min-=1}
+ const y=v=>pad.t+(max-v)/(max-min)*ph,x=i=>pad.l+i/(paths[0].length-1)*pw;
+ ctx.font='10px system-ui';ctx.fillStyle='#687970';ctx.strokeStyle='#e2e8e1';ctx.lineWidth=1;
+ [0,.25,.5,.75,1].forEach(t=>{
+  const yy=pad.t+t*ph;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();
+  const val=max-t*(max-min);ctx.fillText((val<0?'−':'')+'$'+Math.abs(val/1000).toFixed(0)+'k',2,yy+3);
+ });
+ ctx.strokeStyle='#829b8b';ctx.lineWidth=Math.max(.45,Math.min(1,1800/paths.length));ctx.globalAlpha=Math.max(.035,Math.min(.16,3/Math.sqrt(paths.length)));
+ for(const path of paths){ctx.beginPath();path.forEach((v,i)=>i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v)));ctx.stroke()}
+ ctx.globalAlpha=1;ctx.strokeStyle='#205b46';ctx.lineWidth=1.6;
+ const med=Array(paths[0].length);
+ for(let j=0;j<med.length;j++){const vals=paths.map(p=>p[j]).sort((a,b)=>a-b);med[j]=vals[Math.floor(vals.length/2)]}
+ ctx.beginPath();med.forEach((v,i)=>i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v)));ctx.stroke();
+ ctx.fillStyle='#205b46';ctx.fillText('Median',w-53,12);$('chartHorizon').textContent=days+' days';
+}
+function runSimulation(){
+ if(!positions.length){$('simStatus').textContent='Add at least one investment before running the simulation.';return}
+ const days=+$('horizon').value,n=+$('paths').value,steps=60,dt=days/365/steps,paths=new Array(n),results=new Array(n);
+ for(let i=0;i<n;i++){
+  const values=Array(steps+1).fill(0),prices=positions.map(p=>p.spot);
+  for(let step=1;step<=steps;step++){
+   let total=0;
+   for(let k=0;k<positions.length;k++){
+    const p=positions[k],vol=p.vol/100,z=.55*normal()+Math.sqrt(1-.55*.55)*normal();
+    prices[k]*=Math.exp((-.5*vol*vol)*dt+vol*Math.sqrt(dt)*z);total+=payoff(p,prices[k]);
+   }
+   values[step]=total;
+  }
+  paths[i]=values;results[i]=values[steps];
+ }
+ const sorted=results.slice().sort((a,b)=>a-b),quant=q=>sorted[Math.min(n-1,Math.floor(q*(n-1)))];
+ $('median').textContent=money(quant(.5));$('low').textContent=money(quant(.05));$('high').textContent=money(quant(.95));
+ drawPaths(paths,days);$('simStatus').textContent=n.toLocaleString()+' simulated portfolio paths · each line is one possible outcome over '+days+' days. Dark line is the median. Simplified model; not a forecast.';
+ lastResults=true;renderSummary();
+}
+$('run').onclick=runSimulation;
+$('horizon').onchange=()=>{lastResults=null;renderSummary()};
+$('paths').onchange=()=>{lastResults=null;renderSummary()};
 $('demo').onclick=()=>{positions=[];addPosition({ticker:'SPY',kind:'shares',qty:100,spot:590,basis:575,strike:580,premium:4.25,vol:18});addPosition({ticker:'QQQ',kind:'put',qty:1,spot:505,basis:505,strike:490,premium:5.2,vol:23});addPosition({ticker:'AAPL',kind:'covered',qty:1,spot:230,basis:215,strike:245,premium:3.1,vol:27});runSimulation()};
 $('clear').onclick=()=>{positions=[];lastResults=null;$('median').textContent=$('low').textContent=$('high').textContent='—';$('chart').innerHTML='<div class="empty" style="width:100%">Add positions, then run the simulation.</div>';$('simStatus').textContent='No simulation run yet.';renderAll()};
 renderAll();
